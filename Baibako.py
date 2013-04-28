@@ -8,6 +8,7 @@ import cookielib
 import xml.etree.ElementTree
 import datetime
 import random
+import re
 
 
 class Baibako:
@@ -15,17 +16,17 @@ class Baibako:
     Baibako торрент-парсер.
 
     @author Werner van Croy <mail@vancroy.ru>
-    @version 0.2
-    @date 2013/02/03
+    @version 0.31
+    @date 2013/04/28
     """
 
     _username = ""
     _password = ""
     _rss_url = ""
     _watch_directory = ""
-    _extension_filter = []
+    _re_filter = ""
 
-    _user_agent = "Mozilla/5.0 (Windows NT 6.2; WOW64; rv:18.0) Gecko/20100101 Firefox/18.0"
+    _user_agent = "Mozilla/5.0 (Windows NT 6.2; WOW64; rv:20.0) Gecko/20100101 Firefox/20.0"
     _save_file = "Baibako.txt"
 
     _save_file_max_lines_count = 100
@@ -35,21 +36,23 @@ class Baibako:
 
 
     def _torrent_url_adaptation(self, torrent_url):
-        """
+        self.x = """
         Постобработка ссылок.
         """
 
         return torrent_url.replace(" ", ".")
 
 
-    def _filter_torrent_url_by_extension(self, torrent_url):
+    def _filter_torrent_url_by_re(self, torrent_url):
         """
-        Отфильтровать ссылки по расширению файла.
+        Отфильтровать ссылки по регулярному выражению.
         """
 
-        for extension in self._extension_filter:
-            if extension in torrent_url:
+        try:
+            if re.search(self._re_filter, torrent_url):
                 return True
+        except Exception as e01:
+            return False
 
         return False
 
@@ -149,12 +152,28 @@ class Baibako:
         Получить список ссылок из RSS.
         """
 
+        if self._cookie_jar is None:
+            self._cookie_jar = cookielib.CookieJar()
+
+            opener_director = urllib2.build_opener()
+            opener_director.addheaders = [("User-Agent", self._user_agent)]
+            opener_director.add_handler(urllib2.HTTPCookieProcessor(self._cookie_jar))
+            response = opener_director.open("http://baibako.tv/takelogin.php",
+                urllib.urlencode({"username": self._username, "password": self._password}))
+
+        opener_director = urllib2.build_opener()
+        opener_director.addheaders = [("User-Agent", self._user_agent)]
+        opener_director.add_handler(urllib2.HTTPCookieProcessor(self._cookie_jar))
+
         try:
-            response = urllib.urlopen(self._rss_url)
+            response = opener_director.open(self._rss_url).read()
         except IOError as e01:
             return
 
-        rss = xml.etree.ElementTree.fromstring(response.read())
+        try:
+            rss = xml.etree.ElementTree.fromstring(response)
+        except xml.etree.ElementTree.ParseError as e02:
+            return
 
         for node in rss[0]:
             if node.tag == "item":
@@ -168,7 +187,7 @@ class Baibako:
                  password="",
                  rss_url="",
                  watch_directory="",
-                 extension_filter=[]):
+                 re_filter=""):
         """
         Конструктор.
         """
@@ -185,8 +204,8 @@ class Baibako:
         if isinstance(watch_directory, str):
             self._watch_directory = watch_directory.strip(" \t\n\r")
 
-        if isinstance(extension_filter, list):
-            self._extension_filter = extension_filter
+        if isinstance(re_filter, str):
+            self._re_filter = re_filter.strip(" \t\n\r")
 
 
     def parse(self):
@@ -201,8 +220,8 @@ class Baibako:
         for rss_torrent_url in reversed(rss_torrent_url_list):
             # Заменяем в ссылках неправильные символы.
             rss_torrent_url_adapted = self._torrent_url_adaptation(rss_torrent_url)
-            # Проверяем соответствует ли ссылка фильтру расширений.
-            if self._filter_torrent_url_by_extension(rss_torrent_url_adapted):
+            # Проверяем соответствует ли ссылка регулярному выражению.
+            if self._filter_torrent_url_by_re(rss_torrent_url_adapted):
                 # Если ссылка не найдена в файле, то пытаемся скачать торрент.
                 if rss_torrent_url_adapted not in saved_torrent_url_list:
                     # Если торрент успешно скачался, то заносим ссылку в файл в начало списка.
