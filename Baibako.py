@@ -36,7 +36,7 @@ class Baibako:
 
 
     def _torrent_url_adaptation(self, torrent_url):
-        self.x = """
+        """
         Постобработка ссылок.
         """
 
